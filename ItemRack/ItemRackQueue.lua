@@ -58,36 +58,55 @@ function ItemRack.ProcessAutoQueue(slot)
 
 	local list = ItemRack.GetQueues()[slot]
 
+	local lowestCdCandidate
+	local candidate
 	local candidate,bag
+	
+	--find trinket with lowest cd	
 	for i=1,#(list) do
 		candidate = string.match(list[i],"(%d+)") --FIXME: not sure what list[i] is; it might simply be cleaning up some sort of slot number to make sure it is numeric, OR it might actually be an itemID... if it is the latter then this (conversion to baseID) should be handled by either ItemRack.GetIRString(list[i],true) if list[i] is an ItemRack-style ID or ItemRack.GetIRString(list[i],true,true) if list[i] is a regular ItemLink/ItemString, MOST things point to it being an ItemRack-style ID, but I do not want to mess anything up if this is in fact just a regular number, so I'll leave the line as it is
-		if list[i]==0 then
-			break
-		elseif ready and candidate==baseID then
-			break
-		else
-			if not ready or enable==0 or (ItemRackItems[candidate] and ItemRackItems[candidate].priority) then
-				if ItemRack.ItemNearReady(candidate) then
-					if GetItemCount(candidate)>0 and not IsEquippedItem(candidate) then
-						_,bag = ItemRack.FindItem(list[i])
-						if bag then
-							if ItemRack.CombatQueue[slot]~=list[i] then
-								ItemRack.EquipItemByID(list[i],slot)
-							end
-							break
-						end
+		
+		if list[i]==0 then break end --if you reached the "Stop Queue Here" mark, stop looking  (i think?)
+		
+		if not lowestCdCandidate then lowestCdCandidate = candidate end --if nothing is set as lowest, this candidate is the new benchmark
+		
+		if ItemRack.ItemNearReady(candidate) then lowestCdCandidate = candidate break end --if this candidate is ready to equip, stop looking for a new candidate. this list seraches from the top of your queue to the bottom, so this ensures you always equip your highest queue item if it is ready
+		
+		if ItemRack.GetCD(candidate) < ItemRack.GetCD(lowestCdCandidate) then lowestCdCandidate = candidate end --if this is lower than the lowest, this is the new benchmark
+		
+	end
+	
+	
+	--equip trinket with lowest cd
+	if not (ready and lowestCdCandidate==baseID) then --idk, it was in the original code. i don't think it should ever fire, but who knows
+	
+		if not ready or enable==0 or (ItemRackItems[lowestCdCandidate] and ItemRackItems[lowestCdCandidate].priority) then --only if your current trinket is not ready, or other edge cases
+		
+			if GetItemCount(lowestCdCandidate)>0 and not IsEquippedItem(lowestCdCandidate) then --if it's not already equipped,
+			
+			_,bag = ItemRack.FindItem(lowestCdCandidate)
+				if bag then
+					if ItemRack.CombatQueue[slot]~=lowestCdCandidate then
+						ItemRack.EquipItemByID(lowestCdCandidate,slot)
 					end
 				end
 			end
 		end
 	end
+	
 end
 
 function ItemRack.ItemNearReady(id)
-	local start,duration = GetItemCooldown(id)
-	if start==0 or math.max(start + duration - GetTime(),0)<=30 then
+	if start==0 or ItemRack.GetCD(id)<=30 then --if no cooldown, or cooldown is less than 30 seconds, the trinket is ready
 		return true
 	end
+end
+
+function ItemRack.GetCD(id)
+	local start,duration = GetItemCooldown(id)
+	
+	return math.max(start + duration - GetTime(),0) --weird syntax, thanks blizzard: https://wowpedia.fandom.com/wiki/API_GetItemCooldown
+	
 end
 
 function ItemRack.SetQueue(slot,newQueue)
